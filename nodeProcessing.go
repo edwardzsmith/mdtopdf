@@ -20,7 +20,14 @@
 package mdtopdf
 
 import (
+	"encoding/base64"
+	"errors"
 	"fmt"
+	"image"
+	"image/jpeg"
+	"image/png"
+	"io/ioutil"
+	"log"
 	"os"
 	"strings"
 
@@ -215,13 +222,74 @@ func (r *PdfRenderer) processImage(node *bf.Node, entering bool) {
 		// following changes suggested by @sirnewton01, issue #6
 		// does file exist?
 		var imgPath = string(node.LinkData.Destination)
-		_, err := os.Stat(imgPath)
-		if err == nil {
-			r.Pdf.ImageOptions(string(node.LinkData.Destination),
+
+		// base64 encoded inline image
+		if strings.HasPrefix(imgPath, "data:") {
+			imgParts := strings.Split(imgPath, ";base64,")
+			if len(imgParts) != 2 {
+				log.Fatal(errors.New("Badly formatted base64 image"))
+				return
+			}
+			imgTypeParts := strings.Split(imgParts[0], "/")
+			if len(imgTypeParts) != 2 {
+				log.Fatal(errors.New("Badly formatted base64 image"))
+				return
+			}
+			imgSource := imgParts[1]
+			imgType := imgTypeParts[1]
+
+			tmpFile, err := ioutil.TempFile("", string(node.LinkData.Title))
+			if err != nil {
+				log.Fatal(err)
+				return
+			}
+			defer tmpFile.Close()
+
+			reader := base64.NewDecoder(base64.StdEncoding, strings.NewReader(imgSource))
+			m, _, err := image.Decode(reader)
+			if err != nil {
+				log.Fatal(err)
+				return
+			}
+
+			f, err := os.OpenFile(tmpFile.Name(), os.O_WRONLY|os.O_CREATE, 0777)
+			if err != nil {
+				log.Fatal(err)
+				return
+			}
+
+			switch imgType {
+			case "png":
+				err = png.Encode(f, m)
+				if err != nil {
+					log.Fatal(err)
+					return
+				}
+			case "jpeg":
+			case "jpg":
+				err = jpeg.Encode(f, m, &jpeg.Options{Quality: 75})
+				if err != nil {
+					log.Fatal(err)
+					return
+				}
+			default:
+				log.Fatal(fmt.Errorf("Unexpected image type: %s", imgType))
+				return
+			}
+
+			r.Pdf.ImageOptions(tmpFile.Name(),
 				-1, 0, 0, 0, true,
-				fpdf.ImageOptions{ImageType: "", ReadDpi: true}, 0, "")
+				fpdf.ImageOptions{ImageType: imgType, ReadDpi: true}, 0, "")
+
 		} else {
-			r.tracer("Image (file error)", err.Error())
+			_, err := os.Stat(imgPath)
+			if err == nil {
+				r.Pdf.ImageOptions(string(node.LinkData.Destination),
+					-1, 0, 0, 0, true,
+					fpdf.ImageOptions{ImageType: "", ReadDpi: true}, 0, "")
+			} else {
+				r.tracer("Image (file error)", err.Error())
+			}
 		}
 	} else {
 		r.tracer("Image (leaving)", "")
