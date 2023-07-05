@@ -7,7 +7,8 @@ import (
 	"log"
 	"os"
 
-	"github.com/mandolyte/mdtopdf"
+	"github.com/edwardzsmith/mdtopdf"
+	"github.com/go-pdf/fpdf"
 )
 
 var input = flag.String("i", "", "Input text filename; default is os.Stdin")
@@ -44,6 +45,8 @@ func main() {
 	pf := mdtopdf.NewPdfRenderer("", "", *output, "trace.log")
 	pf.Pdf.SetSubject("How to convert markdown to PDF", true)
 	pf.Pdf.SetTitle("Example PDF converted from Markdown", true)
+	pf.Pdf.SetProtection(fpdf.CnProtectPrint, "password1", "password2")
+
 	pf.THeader = mdtopdf.Styler{Font: "Times", Style: "IUB", Size: 20, Spacing: 2,
 		TextColor: mdtopdf.Color{Red: 0, Green: 0, Blue: 0},
 		FillColor: mdtopdf.Color{Red: 179, Green: 179, Blue: 255}}
